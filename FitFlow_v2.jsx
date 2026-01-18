@@ -3107,7 +3107,7 @@ function shouldSkipFocusArea(categoryKey, setting, availableEquipment) {
 }
 
 export default function FitFlowApp() {
-  const [step, setStep] = useState('setting');
+  const [step, setStep] = useState('time');
   const [selectedSetting, setSelectedSetting] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedFocusArea, setSelectedFocusArea] = useState(null);
@@ -3136,7 +3136,7 @@ export default function FitFlowApp() {
     { id: 'outdoor', name: 'Outdoor', icon: '🌳', description: 'Parks, fields, outdoors' },
   ];
 
-  const progressSteps = ['setting', 'category', 'focus_area', 'time'];
+  const progressSteps = ['time', 'setting', 'category', 'focus_area'];
   const activeIndex = progressSteps.indexOf(step);
 
   const getGymEquipment = () => {
@@ -3157,7 +3157,6 @@ export default function FitFlowApp() {
     setSelectedSetting(settingId);
     setSelectedCategory(null);
     setSelectedFocusArea(null);
-    setTargetDuration(null);
     setWorkout(null);
     setStep('category');
   };
@@ -3165,12 +3164,23 @@ export default function FitFlowApp() {
   const handleCategorySelect = (categoryId) => {
     setSelectedCategory(categoryId);
     setSelectedFocusArea(null);
-    setTargetDuration(null);
     setWorkout(null);
     const skipCheck = shouldSkipFocusArea(categoryId, selectedSetting, settingEquipment);
     if (skipCheck.skip) {
       setSelectedFocusArea(skipCheck.autoSelect);
-      setStep('time');
+      if (targetDuration) {
+        const generatedWorkout = generateWorkout({
+          categoryKey: categoryId,
+          subgroupKey: skipCheck.autoSelect,
+          setting: selectedSetting,
+          availableEquipment: settingEquipment,
+          targetDuration,
+        });
+        setWorkout(generatedWorkout);
+        setStep('workout');
+      } else {
+        setStep('time');
+      }
     } else {
       setStep('focus_area');
     }
@@ -3178,22 +3188,38 @@ export default function FitFlowApp() {
 
   const handleFocusAreaSelect = (focusAreaId) => {
     setSelectedFocusArea(focusAreaId);
-    setTargetDuration(null);
     setWorkout(null);
-    setStep('time');
+    if (targetDuration) {
+      const generatedWorkout = generateWorkout({
+        categoryKey: selectedCategory,
+        subgroupKey: focusAreaId,
+        setting: selectedSetting,
+        availableEquipment: settingEquipment,
+        targetDuration,
+      });
+      setWorkout(generatedWorkout);
+      setStep('workout');
+    } else {
+      setStep('time');
+    }
   };
 
   const handleTimeSelect = (minutes) => {
     setTargetDuration(minutes);
-    const generatedWorkout = generateWorkout({
-      categoryKey: selectedCategory,
-      subgroupKey: selectedFocusArea,
-      setting: selectedSetting,
-      availableEquipment: settingEquipment,
-      targetDuration: minutes,
-    });
-    setWorkout(generatedWorkout);
-    setStep('workout');
+    if (selectedSetting && selectedCategory && selectedFocusArea) {
+      const generatedWorkout = generateWorkout({
+        categoryKey: selectedCategory,
+        subgroupKey: selectedFocusArea,
+        setting: selectedSetting,
+        availableEquipment: settingEquipment,
+        targetDuration: minutes,
+      });
+      setWorkout(generatedWorkout);
+      setStep('workout');
+      return;
+    }
+    setWorkout(null);
+    setStep('setting');
   };
 
   const handleRegenerate = () => {
@@ -3209,7 +3235,7 @@ export default function FitFlowApp() {
   };
 
   const handleReset = () => {
-    setStep('setting');
+    setStep('time');
     setSelectedSetting(null);
     setSelectedCategory(null);
     setSelectedFocusArea(null);
@@ -3218,17 +3244,24 @@ export default function FitFlowApp() {
   };
 
   const handleBack = () => {
+    if (step === 'setting') {
+      setStep('time');
+      return;
+    }
     if (step === 'category') {
       setStep('setting');
-      setSelectedSetting(null);
+      setSelectedCategory(null);
+      setSelectedFocusArea(null);
+      setWorkout(null);
       return;
     }
     if (step === 'focus_area') {
       setStep('category');
-      setSelectedCategory(null);
+      setSelectedFocusArea(null);
+      setWorkout(null);
       return;
     }
-    if (step === 'time') {
+    if (step === 'workout') {
       const skipCheck = shouldSkipFocusArea(selectedCategory, selectedSetting, settingEquipment);
       if (skipCheck.skip) {
         setStep('category');
@@ -3238,11 +3271,6 @@ export default function FitFlowApp() {
         setStep('focus_area');
         setSelectedFocusArea(null);
       }
-      setTargetDuration(null);
-      return;
-    }
-    if (step === 'workout') {
-      setStep('time');
       setWorkout(null);
     }
   };
@@ -3484,7 +3512,7 @@ export default function FitFlowApp() {
         )}
         {step === 'setting' && (
           <div>
-            <span className="step-label">Step 1 of 4</span>
+            <span className="step-label">Step 2 of 4</span>
             <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px', marginTop: '4px' }}>
               Where are you training?
             </h1>
@@ -3515,7 +3543,7 @@ export default function FitFlowApp() {
             <button className="back-btn" onClick={handleBack}>
               ← Back
             </button>
-            <span className="step-label">Step 2 of 4</span>
+            <span className="step-label">Step 3 of 4</span>
             <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px', marginTop: '4px' }}>
               What's your goal today?
             </h1>
@@ -3566,7 +3594,7 @@ export default function FitFlowApp() {
             <button className="back-btn" onClick={handleBack}>
               ← Back
             </button>
-            <span className="step-label">Step 3 of 4</span>
+            <span className="step-label">Step 4 of 4</span>
             <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px', marginTop: '4px' }}>
               Which area are you focusing on?
             </h1>
@@ -3600,10 +3628,7 @@ export default function FitFlowApp() {
         )}
         {step === 'time' && (
           <div>
-            <button className="back-btn" onClick={handleBack}>
-              ← Back
-            </button>
-            <span className="step-label">Step 4 of 4</span>
+            <span className="step-label">Step 1 of 4</span>
             <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px', marginTop: '4px' }}>
               How much time do you have?
             </h1>
