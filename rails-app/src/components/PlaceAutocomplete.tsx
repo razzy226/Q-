@@ -37,11 +37,6 @@ export const PlaceAutocomplete = ({
   const [useFallback, setUseFallback] = useState(
     !hasBrowserKey || !hasServerKey
   );
-  const [manualValue, setManualValue] = useState(defaultValue ?? "");
-
-  useEffect(() => {
-    setManualValue(defaultValue ?? "");
-  }, [defaultValue]);
 
   useEffect(() => {
     if (useFallback) {
@@ -126,12 +121,8 @@ export const PlaceAutocomplete = ({
           {label}
         </span>
         <input
-          value={manualValue}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            setManualValue(nextValue);
-            onPlaceSelected({ address: nextValue });
-          }}
+          value={defaultValue ?? ""}
+          onChange={(event) => onPlaceSelected({ address: event.target.value })}
           placeholder={placeholder}
           className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
         />

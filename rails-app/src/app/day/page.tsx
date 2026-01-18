@@ -135,6 +135,7 @@ export default function DayTimeline() {
 
       {selectedItem && (
         <ItemModal
+          key={selectedItem.id}
           item={selectedItem}
           dayKey={selectedDay}
           daySchedule={day}

@@ -56,23 +56,13 @@ export const ItemModal = ({
   const [travelLoading, setTravelLoading] = useState(false);
   const [travelError, setTravelError] = useState<string | null>(null);
   const [nextTravel, setNextTravel] = useState<RouteResult | null>(null);
-  const [manualLat, setManualLat] = useState<string>("");
-  const [manualLng, setManualLng] = useState<string>("");
+  const [manualLat, setManualLat] = useState<string>(
+    item.location.lat?.toString() ?? ""
+  );
+  const [manualLng, setManualLng] = useState<string>(
+    item.location.lng?.toString() ?? ""
+  );
   const [manualCoordError, setManualCoordError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setOrigin(null);
-    setOriginError(null);
-    setOriginStatus("idle");
-    setShowOriginSearch(false);
-    setTravelInfo(null);
-    setTravelLoading(false);
-    setTravelError(null);
-    setNextTravel(null);
-    setManualCoordError(null);
-    setManualLat(item.location.lat?.toString() ?? "");
-    setManualLng(item.location.lng?.toString() ?? "");
-  }, [item.id]);
 
   const sortedItems = useMemo(() => {
     const combined = [...daySchedule.anchors, ...daySchedule.rails];
