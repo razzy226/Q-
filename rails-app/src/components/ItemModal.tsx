@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlaceAutocomplete } from "@/components/PlaceAutocomplete";
 import { useSchedule } from "@/components/ScheduleProvider";
+import { RescheduleSummary } from "@/lib/scheduler";
 import { DayKey, DaySchedule, LocationValue, Rail } from "@/lib/types";
 import {
   addMinutes,
@@ -19,6 +20,7 @@ type ItemModalProps = {
   dayKey: DayKey;
   daySchedule: DaySchedule;
   onClose: () => void;
+  onRescheduled?: (summary: RescheduleSummary) => void;
 };
 
 const BUFFER_EARLY_ARRIVAL = 5;
@@ -27,9 +29,22 @@ const DAY_END = 23 * 60 + 59;
 type RouteResult = {
   durationMin: number;
   distanceMeters?: number;
+  source: "google" | "heuristic";
 };
 
-export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps) => {
+const destinationNeedsCoordsMessage =
+  "Destination needs coordinates. Add keys or enter lat/lng manually.";
+
+const hasCoords = (location: LocationValue) =>
+  typeof location.lat === "number" && typeof location.lng === "number";
+
+export const ItemModal = ({
+  item,
+  dayKey,
+  daySchedule,
+  onClose,
+  onRescheduled,
+}: ItemModalProps) => {
   const { updateItem, runRescheduler } = useSchedule();
   const [origin, setOrigin] = useState<LocationValue | null>(null);
   const [originError, setOriginError] = useState<string | null>(null);
@@ -41,6 +56,9 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
   const [travelLoading, setTravelLoading] = useState(false);
   const [travelError, setTravelError] = useState<string | null>(null);
   const [nextTravel, setNextTravel] = useState<RouteResult | null>(null);
+  const [manualLat, setManualLat] = useState<string>("");
+  const [manualLng, setManualLng] = useState<string>("");
+  const [manualCoordError, setManualCoordError] = useState<string | null>(null);
 
   useEffect(() => {
     setOrigin(null);
@@ -51,6 +69,9 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
     setTravelLoading(false);
     setTravelError(null);
     setNextTravel(null);
+    setManualCoordError(null);
+    setManualLat(item.location.lat?.toString() ?? "");
+    setManualLng(item.location.lng?.toString() ?? "");
   }, [item.id]);
 
   const sortedItems = useMemo(() => {
@@ -61,12 +82,14 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
   }, [daySchedule.anchors, daySchedule.rails]);
 
   const nextItem = useMemo(() => {
-    const currentIndex = sortedItems.findIndex((entry) => entry.id === item.id);
-    if (currentIndex === -1) {
-      return null;
-    }
-    return sortedItems[currentIndex + 1] ?? null;
-  }, [sortedItems, item.id]);
+    const currentStart = toMinutes(item.startTime);
+    return (
+      sortedItems.find(
+        (entry) =>
+          entry.id !== item.id && toMinutes(entry.startTime) > currentStart
+      ) ?? null
+    );
+  }, [sortedItems, item.id, item.startTime]);
 
   const fetchRouteDuration = useCallback(
     async (
@@ -91,11 +114,8 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
 
   const ensureLatLng = useCallback(
     async (target: ItemModalProps["item"]) => {
-      if (
-        typeof target.location.lat === "number" &&
-        typeof target.location.lng === "number"
-      ) {
-        return { lat: target.location.lat, lng: target.location.lng };
+      if (hasCoords(target.location)) {
+        return { lat: target.location.lat as number, lng: target.location.lng as number };
       }
       if (!target.location.address) {
         return null;
@@ -103,20 +123,28 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
       const response = await fetch(
         `/api/geocode?address=${encodeURIComponent(target.location.address)}`
       );
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error("Unable to geocode the destination.");
+        const message =
+          typeof payload?.error === "string" &&
+          payload.error.includes("Missing GOOGLE_MAPS_SERVER_KEY")
+            ? destinationNeedsCoordsMessage
+            : payload?.error ?? "Unable to geocode the destination.";
+        throw new Error(message);
       }
-      const data = await response.json();
+      if (typeof payload.lat !== "number" || typeof payload.lng !== "number") {
+        throw new Error("No coordinates available for this address.");
+      }
       updateItem(dayKey, target.type, target.id, {
         location: {
           ...target.location,
-          lat: data.lat,
-          lng: data.lng,
-          placeId: target.location.placeId ?? data.placeId,
-          address: target.location.address || data.formattedAddress,
+          lat: payload.lat,
+          lng: payload.lng,
+          placeId: target.location.placeId ?? payload.placeId,
+          address: target.location.address || payload.formattedAddress,
         },
       });
-      return { lat: data.lat, lng: data.lng };
+      return { lat: payload.lat, lng: payload.lng };
     },
     [dayKey, updateItem]
   );
@@ -132,6 +160,9 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
         setTravelError(null);
         const destination = await ensureLatLng(item);
         if (!destination || !isMounted) {
+          if (isMounted) {
+            setTravelError(destinationNeedsCoordsMessage);
+          }
           return;
         }
         const result = await fetchRouteDuration(origin, destination);
@@ -229,6 +260,8 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
   const leaveNowEta =
     travelToItemMin !== null ? addMinutes(nowMinutes, travelToItemMin) : null;
 
+  const nextItemMissingCoords =
+    item.type === "rail" && nextItem ? !hasCoords(nextItem.location) : false;
   let compressedLeave: number | null = null;
   if (item.type === "rail" && travelToItemMin !== null) {
     const nextStart = nextItem ? toMinutes(nextItem.startTime) : DAY_END;
@@ -237,6 +270,33 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
       nextStart - travelToNext - item.minDurationMin - BUFFER_EARLY_ARRIVAL;
     compressedLeave = clampMinutes(latestStartAtRail - travelToItemMin);
   }
+
+  const handleSaveCoordinates = () => {
+    const lat = Number(manualLat);
+    const lng = Number(manualLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setManualCoordError("Enter valid latitude and longitude values.");
+      return;
+    }
+    setManualCoordError(null);
+    updateItem(dayKey, item.type, item.id, {
+      location: {
+        ...item.location,
+        lat,
+        lng,
+      },
+    });
+  };
+
+  const handleMissed = () => {
+    if (!window.confirm("This will reschedule today. Continue?")) {
+      return;
+    }
+    const summary = runRescheduler(dayKey, item.id, nowMinutes);
+    if (summary) {
+      onRescheduled?.(summary);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 px-4 pb-8">
@@ -292,6 +352,46 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
           </div>
         </div>
 
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Advanced destination coordinates
+          </summary>
+          <p className="mt-2 text-xs text-slate-500">
+            Use this when Google keys are unavailable or the address cannot be
+            geocoded.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              Latitude
+              <input
+                value={manualLat}
+                onChange={(event) => setManualLat(event.target.value)}
+                placeholder="37.423"
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              Longitude
+              <input
+                value={manualLng}
+                onChange={(event) => setManualLng(event.target.value)}
+                placeholder="-122.084"
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+              />
+            </label>
+          </div>
+          {manualCoordError && (
+            <p className="mt-2 text-xs text-rose-500">{manualCoordError}</p>
+          )}
+          <button
+            type="button"
+            onClick={handleSaveCoordinates}
+            className="mt-3 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:text-slate-900"
+          >
+            Save coordinates
+          </button>
+        </details>
+
         {showOriginSearch && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-slate-400">
@@ -321,6 +421,11 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
             {!travelLoading && travelInfo && (
               <p className="mt-2 text-lg font-semibold text-slate-900">
                 {travelInfo.durationMin} min
+              </p>
+            )}
+            {!travelLoading && travelInfo && (
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">
+                ETA source: {travelInfo.source === "google" ? "Google" : "Heuristic"}
               </p>
             )}
             {travelError && (
@@ -389,7 +494,7 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
               </div>
               <button
                 type="button"
-                onClick={() => runRescheduler(dayKey, item.id, nowMinutes)}
+                onClick={handleMissed}
                 className="rounded-full bg-rose-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-rose-600"
               >
                 I missed
@@ -398,6 +503,11 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
             {nextItem && (
               <p className="mt-3 text-xs text-slate-500">
                 Next up: {nextItem.name} at {nextItem.startTime}
+              </p>
+            )}
+            {nextItemMissingCoords && (
+              <p className="mt-2 text-xs text-amber-600">
+                Next item has no coordinates; compressed leave time may be optimistic.
               </p>
             )}
           </div>

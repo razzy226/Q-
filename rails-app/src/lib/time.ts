@@ -39,7 +39,7 @@ export const getNowMinutes = () => {
 export const formatRelative = (minutes: number, nowMinutes: number) => {
   const diff = minutes - nowMinutes;
   if (diff < 0) {
-    return "Already late";
+    return `Already late by ${Math.abs(diff)} min`;
   }
   if (diff === 0) {
     return "Now";

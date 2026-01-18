@@ -19,18 +19,34 @@ type PlaceSelectEvent = {
 type PlaceAutocompleteProps = {
   label?: string;
   placeholder?: string;
+  defaultValue?: string;
   onPlaceSelected: (location: LocationValue) => void;
 };
 
 export const PlaceAutocomplete = ({
   label = "Search for a place",
   placeholder = "Search for a place",
+  defaultValue,
   onPlaceSelected,
 }: PlaceAutocompleteProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const hasBrowserKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY);
+  const hasServerKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_SERVER_KEY_PRESENT === "true";
+  const [useFallback, setUseFallback] = useState(
+    !hasBrowserKey || !hasServerKey
+  );
+  const [manualValue, setManualValue] = useState(defaultValue ?? "");
 
   useEffect(() => {
+    setManualValue(defaultValue ?? "");
+  }, [defaultValue]);
+
+  useEffect(() => {
+    if (useFallback) {
+      return;
+    }
     let isMounted = true;
     let element: HTMLElement | null = null;
     const container = containerRef.current;
@@ -89,6 +105,7 @@ export const PlaceAutocomplete = ({
             ? err.message
             : "Unable to load Google Places."
         );
+        setUseFallback(true);
       }
     };
 
@@ -100,12 +117,27 @@ export const PlaceAutocomplete = ({
         container.innerHTML = "";
       }
     };
-  }, [onPlaceSelected, placeholder]);
+  }, [onPlaceSelected, placeholder, useFallback]);
 
-  if (error) {
+  if (useFallback) {
     return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        {error}
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          {label}
+        </span>
+        <input
+          value={manualValue}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setManualValue(nextValue);
+            onPlaceSelected({ address: nextValue });
+          }}
+          placeholder={placeholder}
+          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+        />
+        <p className="text-[11px] text-slate-400">
+          Places autocomplete unavailable{error ? `: ${error}` : ""}.
+        </p>
       </div>
     );
   }

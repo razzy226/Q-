@@ -51,13 +51,22 @@ const tryPlace = (
   return null;
 };
 
+export type RescheduleSummary = {
+  totalRails: number;
+  compressedRails: number;
+  unplacedRails: number;
+};
+
 export const rescheduleDay = (
   day: DaySchedule,
   missedRailId: string,
   nowMinutes: number
-): DaySchedule => {
+): { day: DaySchedule; summary: RescheduleSummary } => {
   if (!day.rails.length) {
-    return day;
+    return {
+      day,
+      summary: { totalRails: 0, compressedRails: 0, unplacedRails: 0 },
+    };
   }
 
   const adjustedRails = day.rails.map((rail) => {
@@ -74,7 +83,14 @@ export const rescheduleDay = (
 
   const frames = buildFrames({ ...day, rails: adjustedRails });
   if (!frames.length) {
-    return { ...day, rails: adjustedRails };
+    const summary = {
+      totalRails: adjustedRails.length,
+      compressedRails: adjustedRails.filter(
+        (rail) => rail.durationMin < rail.baselineDurationMin
+      ).length,
+      unplacedRails: adjustedRails.length,
+    };
+    return { day: { ...day, rails: adjustedRails }, summary };
   }
 
   const sortedRails = [...adjustedRails].sort((a, b) => {
@@ -177,8 +193,19 @@ export const rescheduleDay = (
     };
   });
 
+  const summary = {
+    totalRails: updatedRails.length,
+    compressedRails: updatedRails.filter(
+      (rail) => rail.durationMin < rail.baselineDurationMin
+    ).length,
+    unplacedRails: updatedRails.filter((rail) => rail.isUnplaced).length,
+  };
+
   return {
-    ...day,
-    rails: updatedRails,
+    day: {
+      ...day,
+      rails: updatedRails,
+    },
+    summary,
   };
 };

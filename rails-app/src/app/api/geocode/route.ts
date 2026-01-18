@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const address = searchParams.get("address");
+  const address = searchParams.get("address")?.trim();
   if (!address) {
     return NextResponse.json(
       { error: "Address query parameter is required." },
@@ -42,9 +42,18 @@ export async function GET(request: Request) {
   }
 
   const location = result.geometry?.location;
+  if (
+    typeof location?.lat !== "number" ||
+    typeof location?.lng !== "number"
+  ) {
+    return NextResponse.json(
+      { error: "No coordinates available for this address." },
+      { status: 404 }
+    );
+  }
   return NextResponse.json({
-    lat: location?.lat,
-    lng: location?.lng,
+    lat: location.lat,
+    lng: location.lng,
     formattedAddress: result.formatted_address,
     placeId: result.place_id,
   });

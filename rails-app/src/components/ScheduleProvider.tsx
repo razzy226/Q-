@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { clearSchedule, loadSchedule, saveSchedule, seedSchedule } from "@/lib/storage";
 import { DayKey, DaySchedule, Rail, ScheduleData } from "@/lib/types";
-import { rescheduleDay } from "@/lib/scheduler";
+import { RescheduleSummary, rescheduleDay } from "@/lib/scheduler";
 
 type ItemType = "anchor" | "rail";
 
@@ -20,7 +20,11 @@ type ScheduleContextValue = {
   addItem: (day: DayKey, itemType: ItemType) => void;
   removeItem: (day: DayKey, itemType: ItemType, itemId: string) => void;
   resetAll: () => void;
-  runRescheduler: (day: DayKey, railId: string, nowMinutes: number) => void;
+  runRescheduler: (
+    day: DayKey,
+    railId: string,
+    nowMinutes: number
+  ) => RescheduleSummary | null;
 };
 
 const ScheduleContext = createContext<ScheduleContextValue | null>(null);
@@ -171,8 +175,18 @@ export const ScheduleProvider = ({ children }: { children: React.ReactNode }) =>
     saveSchedule(seeded);
   };
 
-  const runRescheduler = (day: DayKey, railId: string, nowMinutes: number) => {
-    updateDay(day, (current) => rescheduleDay(current, railId, nowMinutes));
+  const runRescheduler = (
+    day: DayKey,
+    railId: string,
+    nowMinutes: number
+  ) => {
+    let summary: RescheduleSummary | null = null;
+    updateDay(day, (current) => {
+      const result = rescheduleDay(current, railId, nowMinutes);
+      summary = result.summary;
+      return result.day;
+    });
+    return summary;
   };
 
   const value = {

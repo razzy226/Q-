@@ -174,6 +174,7 @@ export default function Home() {
                     <PlaceAutocomplete
                       label="Destination"
                       placeholder="Search for destination"
+                      defaultValue={anchor.location.address}
                       onPlaceSelected={(location) =>
                         updateItem(selectedDay, "anchor", anchor.id, {
                           location,
@@ -348,6 +349,7 @@ export default function Home() {
                     <PlaceAutocomplete
                       label="Destination"
                       placeholder="Search for destination"
+                      defaultValue={rail.location.address}
                       onPlaceSelected={(location) =>
                         updateItem(selectedDay, "rail", rail.id, {
                           location,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DaySelector } from "@/components/DaySelector";
 import { ItemModal } from "@/components/ItemModal";
 import { Timeline, TimelineItem } from "@/components/Timeline";
@@ -23,6 +23,7 @@ export default function DayTimeline() {
   const { schedule, hydrated } = useSchedule();
   const [selectedDay, setSelectedDay] = useState<DayKey>("mon");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const day = schedule.days[selectedDay];
 
@@ -51,6 +52,15 @@ export default function DayTimeline() {
   }, [timelineItems]);
 
   const selectedItem = timelineItems.find((item) => item.id === selectedItemId);
+  const unscheduledRails = day.rails.filter((rail) => rail.isUnplaced);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   if (!hydrated) {
     return (
@@ -99,6 +109,28 @@ export default function DayTimeline() {
             onSelect={(item) => setSelectedItemId(item.id)}
           />
         )}
+
+        {unscheduledRails.length > 0 && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4">
+            <h2 className="text-sm font-semibold text-amber-800">
+              Unscheduled rails
+            </h2>
+            <p className="mt-1 text-xs text-amber-700">
+              These rails could not fit in available frames.
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-amber-900">
+              {unscheduledRails.map((rail) => (
+                <div key={rail.id} className="rounded-lg bg-white/70 px-4 py-2">
+                  <p className="font-semibold">{rail.name}</p>
+                  <p className="text-xs text-amber-800">
+                    Preferred {rail.startTime} • Baseline {rail.baselineDurationMin} min •
+                    Min {rail.minDurationMin} min
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       {selectedItem && (
@@ -107,7 +139,18 @@ export default function DayTimeline() {
           dayKey={selectedDay}
           daySchedule={day}
           onClose={() => setSelectedItemId(null)}
+          onRescheduled={(summary) =>
+            setToast(
+              `Rescheduled ${summary.totalRails} rails (${summary.compressedRails} compressed)`
+            )
+          }
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-lg">
+          {toast}
+        </div>
       )}
     </div>
   );
