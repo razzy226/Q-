@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DaySelector } from "@/components/DaySelector";
 import { ItemModal } from "@/components/ItemModal";
 import { Timeline, TimelineItem } from "@/components/Timeline";
@@ -51,12 +51,6 @@ export default function DayTimeline() {
   }, [timelineItems]);
 
   const selectedItem = timelineItems.find((item) => item.id === selectedItemId);
-
-  useEffect(() => {
-    if (selectedItemId && !selectedItem) {
-      setSelectedItemId(null);
-    }
-  }, [selectedItem, selectedItemId]);
 
   if (!hydrated) {
     return (

@@ -156,7 +156,7 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
     return () => {
       isMounted = false;
     };
-  }, [origin?.lat, origin?.lng, item, ensureLatLng, fetchRouteDuration]);
+  }, [origin, item, ensureLatLng, fetchRouteDuration]);
 
   useEffect(() => {
     let isMounted = true;
@@ -176,7 +176,7 @@ export const ItemModal = ({ item, dayKey, daySchedule, onClose }: ItemModalProps
           return;
         }
         setNextTravel(result);
-      } catch (err) {
+      } catch {
         if (!isMounted) {
           return;
         }
