@@ -43,11 +43,9 @@ export const ScheduleProvider = ({ children }: { children: React.ReactNode }) =>
       setSchedule(stored);
     } else {
       const seeded = seedSchedule();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSchedule(seeded);
       saveSchedule(seeded);
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true);
   }, []);
 
