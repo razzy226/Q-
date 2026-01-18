@@ -36,6 +36,7 @@ export const ScheduleProvider = ({ children }: { children: React.ReactNode }) =>
   const [schedule, setSchedule] = useState<ScheduleData>(seedSchedule());
   const [hydrated, setHydrated] = useState(false);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const stored = loadSchedule();
     if (stored) {
