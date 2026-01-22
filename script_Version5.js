@@ -219,15 +219,37 @@ function escapeAttr(s){
   return escapeHtml(s).replaceAll("'","&#39;");
 }
 function normalizeForMatch(s){
-  if(!s) return "";
-  // convert curly quotes to straight, collapse whitespace, lowercase
-  return s
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/\u2013|\u2014/g, '-') // ndash/mdash -> hyphen
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  return normalizeForMatchWithMap(s).normalized;
+}
+function normalizeForMatchWithMap(s){
+  if(!s) return { normalized: "", map: [] };
+  let normalized = "";
+  const map = [];
+  let sawNonSpace = false;
+  let lastWasSpace = false;
+  for(let i = 0; i < s.length; i++){
+    let ch = s[i];
+    if(ch === '“' || ch === '”') ch = '"';
+    if(ch === '‘' || ch === '’') ch = "'";
+    if(ch === '\u2013' || ch === '\u2014') ch = '-';
+    if(/\s/.test(ch)){
+      if(!sawNonSpace) continue;
+      if(lastWasSpace) continue;
+      normalized += ' ';
+      map.push(i);
+      lastWasSpace = true;
+      continue;
+    }
+    sawNonSpace = true;
+    lastWasSpace = false;
+    normalized += ch.toLowerCase();
+    map.push(i);
+  }
+  if(normalized.endsWith(' ')){
+    normalized = normalized.slice(0, -1);
+    map.pop();
+  }
+  return { normalized, map };
 }
 
 // Build normalized-key -> original-key map
@@ -276,20 +298,24 @@ let lastFocusedElement = null; // for returning focus after closing modal
 // Render all workouts (reference)
 // -----------------------------
 function renderAllWorkouts(){
-  allWorkoutsDiv.innerHTML = workouts.map(w => {
-    return `<article class="workout" id="${escapeAttr(w.id)}">
-      <strong>${escapeHtml(w.title)}</strong>
-      <pre data-raw="${escapeAttr(w.text)}" class="workout-pre" style="white-space:pre-wrap;margin:8px 0 0 0"></pre>
-    </article>`;
-  }).join('');
+  allWorkoutsDiv.innerHTML = '';
+  workouts.forEach(w => {
+    const article = document.createElement('article');
+    article.className = 'workout';
+    article.id = w.id;
 
-  // populate each pre with linkified HTML
-  allWorkoutsDiv.querySelectorAll('.workout-pre').forEach(pre => {
-    const raw = pre.getAttribute('data-raw') || '';
-    // data-raw is HTML-escaped; convert back for processing by decoding common entities
-    // simplest approach: replace &amp; &lt; &gt; &quot; &#39;
-    const decoded = raw.replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&quot;','"').replaceAll('&#39;',"'");
-    pre.innerHTML = linkifyExercises(decoded);
+    const title = document.createElement('strong');
+    title.textContent = w.title;
+
+    const pre = document.createElement('pre');
+    pre.className = 'workout-pre';
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.margin = '8px 0 0 0';
+    pre.innerHTML = linkifyExercises(w.text);
+
+    article.appendChild(title);
+    article.appendChild(pre);
+    allWorkoutsDiv.appendChild(article);
   });
 }
 
@@ -300,41 +326,45 @@ function renderAllWorkouts(){
 // -----------------------------
 function linkifyExercises(text){
   if(!text) return '';
-  const lines = text.split('\n');
-  const processed = lines.map(line => {
-    let working = line;
-    // We'll attempt to replace the first matching exercise occurrence per line, but allow multiple different matches
-    // To avoid overlapping replacements, we'll iterate and re-run after each replacement until no more matches in that line.
-    let replacedSomething = true;
-    // We'll limit replacements per line to avoid pathological loops
-    let replacements = 0;
-    while(replacedSomething && replacements < 6){
-      replacedSomething = false;
-      const lineNorm = normalizeForMatch(working);
-      for(const nk of exerciseKeys){
-        const idx = lineNorm.indexOf(nk);
-        if(idx !== -1){
-          // original visible substring (from working) corresponding to normalized match
-          const visible = working.substr(idx, nk.length);
-          const buttonHtml = `<button class="exercise-link" data-exname="${escapeAttr(nk)}" aria-haspopup="dialog">${escapeHtml(visible)}</button>`;
-          // build new working by escaping parts around the match (we must escape to prevent injection)
-          const before = working.slice(0, idx);
-          const after = working.slice(idx + nk.length);
-          working = escapeHtml(before) + buttonHtml + escapeHtml(after);
-          replacedSomething = true;
-          replacements++;
-          break; // restart scanning exerciseKeys against the new working (so we don't try to use outdated indices)
-        }
+  return text.split('\n').map(line => {
+    const { normalized, map } = normalizeForMatchWithMap(line);
+    if(!normalized || exerciseKeys.length === 0) return escapeHtml(line);
+
+    const matches = [];
+    for(const nk of exerciseKeys){
+      let startIndex = 0;
+      while(startIndex < normalized.length){
+        const idx = normalized.indexOf(nk, startIndex);
+        if(idx === -1) break;
+        matches.push({ start: idx, end: idx + nk.length, key: nk });
+        startIndex = idx + nk.length;
       }
     }
-    // If nothing replaced, just escape the full line
-    if(!replacedSomething){
-      return escapeHtml(working);
+
+    if(matches.length === 0) return escapeHtml(line);
+
+    matches.sort((a,b) => {
+      if(a.start !== b.start) return a.start - b.start;
+      return (b.end - b.start) - (a.end - a.start);
+    });
+
+    let result = "";
+    let cursor = 0;
+    let lastEnd = -1;
+    for(const match of matches){
+      if(match.start < lastEnd) continue;
+      const origStart = map[match.start];
+      const origEnd = map[match.end - 1] + 1;
+      if(origStart == null || origEnd == null) continue;
+      result += escapeHtml(line.slice(cursor, origStart));
+      const visible = line.slice(origStart, origEnd);
+      result += `<button class="exercise-link" data-exname="${escapeAttr(match.key)}" aria-haspopup="dialog">${escapeHtml(visible)}</button>`;
+      cursor = origEnd;
+      lastEnd = match.end;
     }
-    return working;
-  });
-  // Join lines with newline; CSS uses white-space:pre-wrap to show them
-  return processed.join('\n');
+    result += escapeHtml(line.slice(cursor));
+    return result;
+  }).join('\n');
 }
 
 // -----------------------------
